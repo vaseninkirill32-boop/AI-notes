@@ -1,0 +1,996 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🧠 Smart Notes AI</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            background: #111827;
+            color: #f3f4f6;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        }
+
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #1f2937;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #8b5cf6;
+            border-radius: 9999px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #7c3aed;
+        }
+
+        .markdown h1 { font-size: 1.8rem; font-weight: bold; margin: 1rem 0 0.5rem 0; }
+        .markdown h2 { font-size: 1.5rem; font-weight: bold; margin: 0.8rem 0 0.5rem 0; }
+        .markdown h3 { font-size: 1.2rem; font-weight: bold; margin: 0.6rem 0 0.4rem 0; }
+        .markdown ul { list-style: disc; padding-left: 1.5rem; margin: 0.5rem 0; }
+        .markdown ol { list-style: decimal; padding-left: 1.5rem; margin: 0.5rem 0; }
+        .markdown code { background: #374151; padding: 0.1rem 0.4rem; border-radius: 0.25rem; font-size: 0.875rem; }
+        .markdown pre { background: #1f2937; padding: 1rem; border-radius: 0.5rem; margin: 0.5rem 0; overflow-x: auto; }
+        .markdown blockquote { border-left: 4px solid #8b5cf6; padding-left: 1rem; font-style: italic; color: #9ca3af; }
+        .markdown a { color: #a78bfa; text-decoration: underline; }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        .animate-spin {
+            animation: spin 1s linear infinite;
+        }
+
+        .modal-overlay {
+            background: rgba(0, 0, 0, 0.7);
+            backdrop-filter: blur(8px);
+        }
+
+        .note-card {
+            transition: all 0.2s ease;
+        }
+        .note-card:hover {
+            border-color: #8b5cf6;
+            transform: translateY(-2px);
+        }
+
+        .toast {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            padding: 12px 24px;
+            border-radius: 8px;
+            color: white;
+            font-weight: 500;
+            z-index: 9999;
+            animation: slideIn 0.3s ease;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+        }
+        .toast-success { background: #059669; }
+        .toast-error { background: #dc2626; }
+        .toast-info { background: #2563eb; }
+
+        @keyframes slideIn {
+            from { transform: translateX(100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+
+        .search-hint {
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+            font-size: 0.75rem;
+            color: #6b7280;
+            margin-top: 4px;
+        }
+        .search-hint span {
+            background: #1f2937;
+            padding: 2px 8px;
+            border-radius: 4px;
+        }
+        .search-hint .highlight {
+            color: #a78bfa;
+        }
+
+        .match-type {
+            font-size: 0.65rem;
+            padding: 2px 8px;
+            border-radius: 4px;
+            display: inline-block;
+        }
+        .match-exact {
+            background: #05966930;
+            color: #34d399;
+            border: 1px solid #059669;
+        }
+        .match-semantic {
+            background: #2563eb30;
+            color: #60a5fa;
+            border: 1px solid #2563eb;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="app">
+        <!-- ЗАГРУЗЧИК -->
+        <div id="loader" class="flex items-center justify-center min-h-screen">
+            <div class="text-center">
+                <div class="w-16 h-16 border-4 border-purple-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+                <p class="text-gray-400 text-lg">Загрузка AI модели...</p>
+                <p class="text-gray-500 text-sm mt-2">Это займёт 10-20 секунд при первом запуске</p>
+            </div>
+        </div>
+
+        <!-- ОСНОВНОЕ ПРИЛОЖЕНИЕ -->
+        <div id="main" class="hidden">
+            <div class="container mx-auto px-4 py-8 max-w-7xl">
+                <!-- Шапка -->
+                <header class="flex flex-wrap items-center justify-between mb-8 gap-4">
+                    <div>
+                        <h1 class="text-3xl font-bold bg-gradient-to-r from-purple-400 to-pink-500 bg-clip-text text-transparent">
+                            🧠 Smart Notes AI
+                        </h1>
+                        <p class="text-gray-400 text-sm mt-1">
+                            Точный поиск в кавычках + смысловой поиск
+                        </p>
+                    </div>
+                    <div class="flex flex-wrap gap-2">
+                        <button onclick="exportNotes()"
+                                class="px-3 py-2 bg-green-600 hover:bg-green-700 rounded-lg transition-colors text-sm flex items-center gap-1">
+                            💾 Экспорт
+                        </button>
+                        <button onclick="importNotes()"
+                                class="px-3 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors text-sm flex items-center gap-1">
+                            📂 Импорт
+                        </button>
+                        <button onclick="clearAllNotes()"
+                                class="px-3 py-2 bg-red-600 hover:bg-red-700 rounded-lg transition-colors text-sm">
+                            🗑️
+                        </button>
+                        <button onclick="createNote()"
+                                class="px-4 py-2 bg-purple-600 hover:bg-purple-700 rounded-lg transition-colors flex items-center gap-2">
+                            <span class="text-xl">+</span>
+                            Новая заметка
+                        </button>
+                    </div>
+                </header>
+
+                <!-- Поиск -->
+                <div class="mb-6">
+                    <div class="relative">
+                        <input type="text"
+                               id="searchInput"
+                               oninput="handleSearch(this.value)"
+                               placeholder='Поиск: "точное слово" или просто слово для смыслового поиска'
+                               class="w-full px-4 py-3 pl-12 bg-gray-800 border border-gray-700 rounded-lg focus:outline-none focus:border-purple-500 transition-colors text-gray-100 placeholder-gray-400">
+                        <svg class="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+                        </svg>
+                        <div id="searchStatus" class="text-xs text-gray-500 mt-1 ml-1">
+                            💡 Используйте кавычки для точного поиска: "тренировки"
+                        </div>
+                    </div>
+                    <div class="search-hint">
+                        <span>🔍 <span class="highlight">"точное слово"</span> — только точное совпадение</span>
+                        <span>🔍 <span class="highlight">слово</span> — смысловой поиск</span>
+                        <span>🔍 <span class="highlight">"ИИ" обучение</span> — точное ИИ + смысловое обучение</span>
+                    </div>
+                </div>
+
+                <!-- Статистика -->
+                <div id="stats" class="text-sm text-gray-400 mb-4 hidden">
+                    Всего заметок: <span id="noteCount">0</span>
+                </div>
+
+                <!-- Список заметок -->
+                <div id="notesList" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                </div>
+
+                <!-- Пустое состояние -->
+                <div id="emptyState" class="text-center py-20">
+                    <div class="text-6xl mb-4">📝</div>
+                    <h2 class="text-2xl font-semibold text-gray-300 mb-2">Нет заметок</h2>
+                    <p class="text-gray-400">Создайте первую заметку, нажав кнопку "Новая заметка"</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- РЕДАКТОР -->
+        <div id="editorModal" class="fixed inset-0 modal-overlay flex items-center justify-center p-4 z-50 hidden">
+            <div class="bg-gray-800 rounded-xl w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
+                <!-- Заголовок -->
+                <div class="flex items-center justify-between p-4 border-b border-gray-700">
+                    <input type="text"
+                           id="noteTitle"
+                           placeholder="Заголовок заметки..."
+                           class="text-xl font-semibold bg-transparent outline-none text-gray-100 placeholder-gray-500 flex-1">
+                    <div class="flex items-center gap-2">
+                        <button onclick="togglePreview()"
+                                class="px-3 py-1 text-sm bg-gray-700 hover:bg-gray-600 rounded transition-colors">
+                            Превью
+                        </button>
+                        <button onclick="closeEditor()"
+                                class="p-1 hover:bg-gray-700 rounded transition-colors">
+                            <svg class="w-6 h-6 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Содержимое -->
+                <div class="flex-1 overflow-auto p-4">
+                    <div id="editorContent">
+                        <textarea id="noteContent"
+                                  placeholder="Напишите что-нибудь... Поддерживается **Markdown**"
+                                  class="w-full h-full min-h-[300px] bg-transparent outline-none resize-none text-gray-100 placeholder-gray-500"></textarea>
+                    </div>
+                    <div id="previewContent" class="hidden markdown prose prose-invert max-w-none">
+                    </div>
+                </div>
+
+                <!-- Футер -->
+                <div class="flex flex-wrap items-center justify-between p-4 border-t border-gray-700 gap-2">
+                    <div id="noteStatus" class="text-xs text-gray-500">
+                        ⏳ Будет проиндексировано при сохранении
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <button onclick="deleteNote()"
+                                id="deleteBtn"
+                                class="px-4 py-2 text-red-400 hover:bg-red-900/20 rounded-lg transition-colors hidden">
+                            Удалить
+                        </button>
+                        <button onclick="closeEditor()"
+                                class="px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg transition-colors">
+                            Отмена
+                        </button>
+                        <button onclick="saveNote()"
+                                id="saveBtn"
+                                class="px-6 py-2 bg-purple-600 hover:bg-purple-700 rounded-lg transition-colors flex items-center gap-2">
+                            Сохранить
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script type="importmap">
+        {
+            "imports": {
+                "@xenova/transformers": "https://cdn.jsdelivr.net/npm/@xenova/transformers@2.15.1/dist/transformers.min.js"
+            }
+        }
+    </script>
+
+    <script type="module">
+        import { pipeline } from '@xenova/transformers';
+
+        // ============================================
+        // СОСТОЯНИЕ
+        // ============================================
+        let notes = [];
+        let currentNoteId = null;
+        let editingNote = null;
+        let embeddingPipeline = null;
+        let searchTimeout = null;
+        let isPreview = false;
+        let autoSaveTimer = null;
+        let searchResults = [];
+
+        // ============================================
+        // РАБОТА С ХРАНИЛИЩЕМ
+        // ============================================
+        function loadNotes() {
+            try {
+                const data = localStorage.getItem('smartNotes');
+                if (data) {
+                    notes = JSON.parse(data);
+                    console.log(`✅ Загружено ${notes.length} заметок`);
+                    return true;
+                }
+            } catch (e) {
+                console.error('Ошибка загрузки:', e);
+            }
+            return false;
+        }
+
+        function saveNotes() {
+            try {
+                localStorage.setItem('smartNotes', JSON.stringify(notes));
+                updateStats();
+                return true;
+            } catch (e) {
+                console.error('Ошибка сохранения:', e);
+                showToast('Ошибка сохранения!', 'error');
+                return false;
+            }
+        }
+
+        // ============================================
+        // УВЕДОМЛЕНИЯ
+        // ============================================
+        function showToast(message, type = 'success') {
+            const existing = document.querySelector('.toast');
+            if (existing) existing.remove();
+
+            const toast = document.createElement('div');
+            toast.className = `toast toast-${type}`;
+            toast.textContent = message;
+            document.body.appendChild(toast);
+
+            setTimeout(() => {
+                toast.style.opacity = '0';
+                toast.style.transition = 'opacity 0.5s';
+                setTimeout(() => toast.remove(), 500);
+            }, 3000);
+        }
+
+        // ============================================
+        // СТАТИСТИКА
+        // ============================================
+        function updateStats() {
+            const stats = document.getElementById('stats');
+            const count = document.getElementById('noteCount');
+            if (notes.length > 0) {
+                stats.classList.remove('hidden');
+                count.textContent = notes.length;
+            } else {
+                stats.classList.add('hidden');
+            }
+        }
+
+        // ============================================
+        // AI МОДЕЛЬ
+        // ============================================
+        async function initModel() {
+            try {
+                console.log('🔄 Загрузка AI модели...');
+                embeddingPipeline = await pipeline('feature-extraction', 'Xenova/all-MiniLM-L6-v2');
+                console.log('✅ Модель загружена!');
+                return true;
+            } catch (error) {
+                console.error('❌ Ошибка загрузки модели:', error);
+                return false;
+            }
+        }
+
+        async function generateEmbedding(text) {
+            if (!text || text.trim() === '') return null;
+            try {
+                if (!embeddingPipeline) {
+                    await initModel();
+                }
+                const result = await embeddingPipeline(text, {
+                    pooling: 'mean',
+                    normalize: true
+                });
+                return Array.from(result.data);
+            } catch (error) {
+                console.error('Ошибка генерации эмбеддинга:', error);
+                return null;
+            }
+        }
+
+        function cosineSimilarity(vecA, vecB) {
+            if (!vecA || !vecB || vecA.length !== vecB.length) return 0;
+            let dot = 0, normA = 0, normB = 0;
+            for (let i = 0; i < vecA.length; i++) {
+                dot += vecA[i] * vecB[i];
+                normA += vecA[i] * vecA[i];
+                normB += vecB[i] * vecB[i];
+            }
+            if (normA === 0 || normB === 0) return 0;
+            return dot / (Math.sqrt(normA) * Math.sqrt(normB));
+        }
+
+        // ============================================
+        // ИНДЕКСАЦИЯ
+        // ============================================
+        async function indexAllNotes() {
+            let indexed = 0;
+            for (let note of notes) {
+                if (!note.embedding) {
+                    const text = (note.title || '') + ' ' + (note.content || '');
+                    if (text.trim()) {
+                        note.embedding = await generateEmbedding(text);
+                        indexed++;
+                    }
+                }
+            }
+            if (indexed > 0) {
+                saveNotes();
+                console.log(`✅ Проиндексировано ${indexed} заметок`);
+                showToast(`Проиндексировано ${indexed} заметок`, 'info');
+            }
+            renderNotes();
+        }
+
+        // ============================================
+        // ПАРСИНГ ЗАПРОСА
+        // ============================================
+        function parseSearchQuery(query) {
+            // Находим все фразы в кавычках
+            const exactPhrases = [];
+            const remainingParts = [];
+
+            // Ищем "фразы в кавычках"
+            const regex = /"([^"]*)"/g;
+            let match;
+            let lastIndex = 0;
+            const queryCopy = query;
+
+            while ((match = regex.exec(queryCopy)) !== null) {
+                // Добавляем текст до кавычек в remainingParts
+                const before = queryCopy.substring(lastIndex, match.index).trim();
+                if (before) {
+                    remainingParts.push(before);
+                }
+                // Добавляем фразу в кавычках
+                exactPhrases.push(match[1].toLowerCase().trim());
+                lastIndex = match.index + match[0].length;
+            }
+
+            // Добавляем остаток текста после последних кавычек
+            const after = queryCopy.substring(lastIndex).trim();
+            if (after) {
+                remainingParts.push(after);
+            }
+
+            // Разбиваем remainingParts на отдельные слова
+            const semanticWords = remainingParts.join(' ').split(/\s+/).filter(w => w.length > 0);
+
+            return {
+                exactPhrases: exactPhrases.filter(p => p.length > 0),
+                semanticWords: semanticWords
+            };
+        }
+
+        // ============================================
+        // ПОИСК (НОВАЯ ВЕРСИЯ)
+        // ============================================
+        window.handleSearch = function(query) {
+            clearTimeout(searchTimeout);
+            const status = document.getElementById('searchStatus');
+
+            if (!query.trim()) {
+                // Показываем все заметки
+                loadNotes();
+                renderNotes();
+                status.innerHTML = '💡 Используйте кавычки для точного поиска: "тренировки"';
+                return;
+            }
+
+            status.innerHTML = '🔍 Поиск...';
+            searchTimeout = setTimeout(async () => {
+                try {
+                    const parsed = parseSearchQuery(query);
+                    console.log('Парсинг запроса:', parsed);
+
+                    const allNotes = JSON.parse(localStorage.getItem('smartNotes') || '[]');
+
+                    // Если есть фразы в кавычках - ищем ТОЛЬКО их
+                    if (parsed.exactPhrases.length > 0) {
+                        // Ищем точные совпадения
+                        const exactResults = allNotes.filter(note => {
+                            const text = ((note.title || '') + ' ' + (note.content || '')).toLowerCase();
+                            // Проверяем, что ВСЕ фразы есть в тексте
+                            return parsed.exactPhrases.every(phrase => text.includes(phrase));
+                        });
+
+                        // Если есть еще семантические слова - фильтруем результаты
+                        if (parsed.semanticWords.length > 0 && exactResults.length > 0) {
+                            const semanticQuery = parsed.semanticWords.join(' ');
+                            const semanticEmbedding = await generateEmbedding(semanticQuery);
+
+                            if (semanticEmbedding) {
+                                const scored = exactResults.map(note => {
+                                    const noteText = ((note.title || '') + ' ' + (note.content || ''));
+                                    let score = 0;
+                                    if (note.embedding) {
+                                        score = cosineSimilarity(semanticEmbedding, note.embedding);
+                                    } else {
+                                        // Fallback на текстовый поиск
+                                        const lowerText = noteText.toLowerCase();
+                                        score = parsed.semanticWords.filter(w => lowerText.includes(w.toLowerCase())).length / parsed.semanticWords.length;
+                                    }
+                                    return { ...note, score, matchType: 'semantic' };
+                                });
+
+                                const sorted = scored
+                                    .sort((a, b) => b.score - a.score)
+                                    .filter(n => n.score > 0.1);
+
+                                if (sorted.length > 0) {
+                                    notes = sorted;
+                                    renderNotes();
+                                    status.innerHTML = `✅ Найдено ${sorted.length} заметок (${parsed.exactPhrases.join(', ')} + смысловой поиск)`;
+                                } else {
+                                    notes = exactResults.map(n => ({ ...n, score: 1, matchType: 'exact' }));
+                                    renderNotes();
+                                    status.innerHTML = `✅ Найдено ${exactResults.length} заметок (точное совпадение "${parsed.exactPhrases.join(', ')}")`;
+                                }
+                            } else {
+                                notes = exactResults.map(n => ({ ...n, score: 1, matchType: 'exact' }));
+                                renderNotes();
+                                status.innerHTML = `✅ Найдено ${exactResults.length} заметок (точное совпадение)`;
+                            }
+                        } else if (exactResults.length > 0) {
+                            // Только точный поиск
+                            notes = exactResults.map(n => ({ ...n, score: 1, matchType: 'exact' }));
+                            renderNotes();
+                            status.innerHTML = `✅ Найдено ${exactResults.length} заметок (точное совпадение "${parsed.exactPhrases.join(', ')}")`;
+                        } else {
+                            // Нет точных совпадений
+                            notes = [];
+                            renderNotes();
+                            status.innerHTML = `❌ Не найдено точное совпадение "${parsed.exactPhrases.join(', ')}"`;
+                        }
+                        return;
+                    }
+
+                    // Если нет кавычек - семантический поиск
+                    if (parsed.semanticWords.length > 0) {
+                        const queryText = parsed.semanticWords.join(' ');
+
+                        // Проверяем, есть ли заметки с эмбеддингами
+                        const withEmbeddings = allNotes.filter(n => n.embedding);
+                        const withoutEmbeddings = allNotes.filter(n => !n.embedding);
+
+                        let semanticResults = [];
+                        let textResults = [];
+
+                        // Семантический поиск
+                        if (withEmbeddings.length > 0) {
+                            const queryEmbedding = await generateEmbedding(queryText);
+                            if (queryEmbedding) {
+                                semanticResults = withEmbeddings.map(note => ({
+                                    ...note,
+                                    score: cosineSimilarity(queryEmbedding, note.embedding),
+                                    matchType: 'semantic'
+                                })).filter(n => n.score > 0.15)
+                                  .sort((a, b) => b.score - a.score);
+                            }
+                        }
+
+                        // Текстовый поиск для заметок без эмбеддингов
+                        if (withoutEmbeddings.length > 0) {
+                            const lowerQuery = queryText.toLowerCase();
+                            textResults = withoutEmbeddings
+                                .filter(n => {
+                                    const text = ((n.title || '') + ' ' + (n.content || '')).toLowerCase();
+                                    return parsed.semanticWords.some(w => text.includes(w.toLowerCase()));
+                                })
+                                .map(n => ({ ...n, score: 0.5, matchType: 'text' }));
+                        }
+
+                        // Объединяем результаты
+                        let combined = [...semanticResults, ...textResults];
+
+                        // Убираем дубликаты
+                        const seen = new Set();
+                        combined = combined.filter(n => {
+                            if (seen.has(n.id)) return false;
+                            seen.add(n.id);
+                            return true;
+                        });
+
+                        if (combined.length > 0) {
+                            notes = combined;
+                            renderNotes();
+                            status.innerHTML = `✅ Найдено ${combined.length} заметок (смысловой поиск)`;
+                        } else {
+                            notes = [];
+                            renderNotes();
+                            status.innerHTML = '❌ Ничего не найдено';
+                        }
+                    } else {
+                        // Пустой запрос
+                        loadNotes();
+                        renderNotes();
+                        status.innerHTML = '💡 Используйте кавычки для точного поиска: "тренировки"';
+                    }
+                } catch (error) {
+                    console.error('Ошибка поиска:', error);
+                    document.getElementById('searchStatus').innerHTML = '❌ Ошибка поиска';
+                }
+            }, 300);
+        };
+
+        // ============================================
+        // ОТОБРАЖЕНИЕ
+        // ============================================
+        function renderNotes() {
+            const list = document.getElementById('notesList');
+            const empty = document.getElementById('emptyState');
+
+            if (notes.length === 0) {
+                list.innerHTML = '';
+                empty.classList.remove('hidden');
+                updateStats();
+                return;
+            }
+            empty.classList.add('hidden');
+
+            list.innerHTML = notes.map(note => {
+                const matchType = note.matchType || (note.embedding ? 'semantic' : 'text');
+                let matchLabel = '';
+                let matchClass = '';
+
+                if (matchType === 'exact') {
+                    matchLabel = '🎯 Точное совпадение';
+                    matchClass = 'match-exact';
+                } else if (matchType === 'semantic' && note.score > 0.5) {
+                    matchLabel = '🧠 Смысловой поиск';
+                    matchClass = 'match-semantic';
+                } else if (matchType === 'semantic') {
+                    matchLabel = '🔍 Похоже по смыслу';
+                    matchClass = 'match-semantic';
+                } else {
+                    matchLabel = '📝 Текстовый поиск';
+                    matchClass = 'match-semantic';
+                }
+
+                return `
+                <div class="note-card bg-gray-800 border border-gray-700 rounded-lg p-4 hover:border-purple-500 transition-all cursor-pointer group"
+                     onclick="openNote('${note.id}')">
+                    <div class="flex items-start justify-between mb-2">
+                        <h3 class="text-lg font-semibold text-gray-100 truncate">
+                            ${escapeHtml(note.title || 'Без названия')}
+                        </h3>
+                        <button onclick="event.stopPropagation(); deleteNoteById('${note.id}')"
+                                class="text-gray-500 hover:text-red-400 transition-colors opacity-0 group-hover:opacity-100">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                            </svg>
+                        </button>
+                    </div>
+                    <p class="text-gray-400 text-sm line-clamp-3 mb-3">
+                        ${escapeHtml(getPreview(note.content || ''))}
+                    </p>
+                    <div class="flex items-center justify-between text-xs">
+                        <span class="text-gray-500">${formatDate(note.updatedAt || note.createdAt)}</span>
+                        <span class="match-type ${matchClass}">${matchLabel}</span>
+                    </div>
+                </div>
+            `}).join('');
+            updateStats();
+        }
+
+        function getPreview(content) {
+            const plain = content.replace(/[#*`>_\-]/g, '').trim();
+            return plain.slice(0, 100) + (plain.length > 100 ? '...' : '') || 'Пустая заметка';
+        }
+
+        function formatDate(dateString) {
+            const date = new Date(dateString);
+            const now = new Date();
+            const diff = now - date;
+            if (diff < 60000) return 'Только что';
+            if (diff < 3600000) return Math.floor(diff / 60000) + ' мин назад';
+            if (diff < 86400000) return Math.floor(diff / 3600000) + ' ч назад';
+            return date.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short', year: 'numeric' });
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        // ============================================
+        // СОЗДАНИЕ / РЕДАКТИРОВАНИЕ
+        // ============================================
+        window.createNote = function() {
+            currentNoteId = null;
+            editingNote = {
+                id: Date.now().toString(),
+                title: '',
+                content: '',
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString(),
+                embedding: null
+            };
+            document.getElementById('noteTitle').value = '';
+            document.getElementById('noteContent').value = '';
+            document.getElementById('deleteBtn').classList.add('hidden');
+            document.getElementById('noteStatus').textContent = '⏳ Будет проиндексировано при сохранении';
+            document.getElementById('editorModal').classList.remove('hidden');
+            document.getElementById('previewContent').classList.add('hidden');
+            document.getElementById('editorContent').classList.remove('hidden');
+            isPreview = false;
+            document.getElementById('noteContent').focus();
+        };
+
+        window.openNote = function(id) {
+            const note = notes.find(n => n.id === id);
+            if (!note) return;
+
+            currentNoteId = id;
+            editingNote = { ...note };
+            document.getElementById('noteTitle').value = note.title || '';
+            document.getElementById('noteContent').value = note.content || '';
+            document.getElementById('deleteBtn').classList.remove('hidden');
+            document.getElementById('noteStatus').textContent = note.embedding ? '✅ AI-индексировано' : '⏳ Будет проиндексировано при сохранении';
+            document.getElementById('editorModal').classList.remove('hidden');
+            document.getElementById('previewContent').classList.add('hidden');
+            document.getElementById('editorContent').classList.remove('hidden');
+            isPreview = false;
+            document.getElementById('noteContent').focus();
+        };
+
+        function setupAutoSave() {
+            const titleInput = document.getElementById('noteTitle');
+            const contentInput = document.getElementById('noteContent');
+
+            const autoSave = () => {
+                clearTimeout(autoSaveTimer);
+                autoSaveTimer = setTimeout(() => {
+                    if (currentNoteId || editingNote) {
+                        const title = titleInput.value.trim() || 'Без названия';
+                        const content = contentInput.value;
+                        if (content.trim() || title) {
+                            const note = notes.find(n => n.id === currentNoteId);
+                            if (note) {
+                                note.title = title;
+                                note.content = content;
+                                note.updatedAt = new Date().toISOString();
+                                saveNotes();
+                                renderNotes();
+                                document.getElementById('noteStatus').textContent = '💾 Автосохранено';
+                                setTimeout(() => {
+                                    document.getElementById('noteStatus').textContent = '✅ Сохранено';
+                                }, 2000);
+                            }
+                        }
+                    }
+                }, 1500);
+            };
+
+            titleInput.addEventListener('input', autoSave);
+            contentInput.addEventListener('input', autoSave);
+        }
+
+        window.togglePreview = function() {
+            isPreview = !isPreview;
+            const content = document.getElementById('noteContent').value;
+            const preview = document.getElementById('previewContent');
+            const editor = document.getElementById('editorContent');
+            const btn = document.querySelector('#editorModal .border-b button:first-child');
+
+            if (isPreview) {
+                preview.innerHTML = window.marked ? window.marked.parse(content || '*Пустая заметка*') : (content || 'Пустая заметка');
+                preview.classList.remove('hidden');
+                editor.classList.add('hidden');
+                btn.textContent = 'Редактировать';
+            } else {
+                preview.classList.add('hidden');
+                editor.classList.remove('hidden');
+                btn.textContent = 'Превью';
+            }
+        };
+
+        window.saveNote = async function() {
+            const title = document.getElementById('noteTitle').value.trim() || 'Без названия';
+            const content = document.getElementById('noteContent').value;
+
+            if (!content.trim() && !title) {
+                showToast('Заметка не может быть пустой!', 'error');
+                return;
+            }
+
+            const saveBtn = document.getElementById('saveBtn');
+            saveBtn.disabled = true;
+            saveBtn.innerHTML = '<span class="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></span> Сохранение...';
+
+            try {
+                const text = title + ' ' + content;
+                const embedding = text.trim() ? await generateEmbedding(text) : null;
+
+                const noteData = {
+                    id: editingNote.id || Date.now().toString(),
+                    title: title,
+                    content: content,
+                    createdAt: editingNote.createdAt || new Date().toISOString(),
+                    updatedAt: new Date().toISOString(),
+                    embedding: embedding
+                };
+
+                const index = notes.findIndex(n => n.id === noteData.id);
+                if (index >= 0) {
+                    notes[index] = noteData;
+                } else {
+                    notes.push(noteData);
+                }
+
+                saveNotes();
+                renderNotes();
+                showToast('✅ Заметка сохранена!', 'success');
+                closeEditor();
+            } catch (error) {
+                console.error('Ошибка сохранения:', error);
+                showToast('❌ Ошибка при сохранении', 'error');
+            } finally {
+                saveBtn.disabled = false;
+                saveBtn.innerHTML = 'Сохранить';
+            }
+        };
+
+        window.deleteNote = function() {
+            if (!currentNoteId) return;
+            if (confirm('Удалить заметку?')) {
+                deleteNoteById(currentNoteId);
+                showToast('🗑️ Заметка удалена', 'info');
+                closeEditor();
+            }
+        };
+
+        window.deleteNoteById = function(id) {
+            notes = notes.filter(n => n.id !== id);
+            saveNotes();
+            renderNotes();
+            if (currentNoteId === id) {
+                closeEditor();
+            }
+        };
+
+        window.closeEditor = function() {
+            document.getElementById('editorModal').classList.add('hidden');
+            currentNoteId = null;
+            editingNote = null;
+            isPreview = false;
+            document.getElementById('previewContent').classList.add('hidden');
+            document.getElementById('editorContent').classList.remove('hidden');
+        };
+
+        // ============================================
+        // ЭКСПОРТ / ИМПОРТ
+        // ============================================
+        window.exportNotes = function() {
+            if (notes.length === 0) {
+                showToast('Нет заметок для экспорта!', 'error');
+                return;
+            }
+            const data = JSON.stringify(notes, null, 2);
+            const blob = new Blob([data], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `notes_backup_${new Date().toISOString().slice(0,10)}.json`;
+            a.click();
+            URL.revokeObjectURL(url);
+            showToast(`✅ Экспортировано ${notes.length} заметок`, 'success');
+        };
+
+        window.importNotes = function() {
+            const input = document.createElement('input');
+            input.type = 'file';
+            input.accept = '.json';
+            input.onchange = function(e) {
+                const file = e.target.files[0];
+                if (!file) return;
+                const reader = new FileReader();
+                reader.onload = function(event) {
+                    try {
+                        const imported = JSON.parse(event.target.result);
+                        if (Array.isArray(imported) && imported.length > 0) {
+                            if (imported[0].id && imported[0].title !== undefined) {
+                                notes = imported;
+                                saveNotes();
+                                renderNotes();
+                                showToast(`✅ Импортировано ${notes.length} заметок!`, 'success');
+                                setTimeout(() => indexAllNotes(), 1000);
+                            } else {
+                                showToast('❌ Неверный формат файла', 'error');
+                            }
+                        } else {
+                            showToast('❌ Файл пуст или повреждён', 'error');
+                        }
+                    } catch (error) {
+                        showToast('❌ Ошибка: неверный формат файла', 'error');
+                    }
+                };
+                reader.readAsText(file);
+            };
+            input.click();
+        };
+
+        window.clearAllNotes = function() {
+            if (notes.length === 0) {
+                showToast('Нет заметок для удаления', 'info');
+                return;
+            }
+            if (confirm('⚠️ Удалить ВСЕ заметки? Это действие нельзя отменить!')) {
+                if (confirm('Вы уверены? 🤔')) {
+                    notes = [];
+                    saveNotes();
+                    renderNotes();
+                    showToast('🗑️ Все заметки удалены', 'info');
+                }
+            }
+        };
+
+        // ============================================
+        // ИНИЦИАЛИЗАЦИЯ
+        // ============================================
+        async function init() {
+            const hasNotes = loadNotes();
+            const modelLoaded = await initModel();
+
+            document.getElementById('loader').classList.add('hidden');
+            document.getElementById('main').classList.remove('hidden');
+
+            if (modelLoaded) {
+                await indexAllNotes();
+                document.getElementById('searchStatus').innerHTML = '✅ AI модель загружена! Используйте кавычки для точного поиска';
+            } else {
+                document.getElementById('searchStatus').innerHTML = '⚠️ AI не загружен, работает только текстовый поиск';
+            }
+
+            renderNotes();
+            setupAutoSave();
+
+            if (notes.length > 0) {
+                showToast(`👋 Добро пожаловать! У вас ${notes.length} заметок`, 'info');
+            } else {
+                showToast('📝 Создайте первую заметку!', 'info');
+            }
+
+            console.log('🧠 Smart Notes AI запущено!');
+            console.log('📝 Заметок:', notes.length);
+            console.log('🔍 Синтаксис поиска:');
+            console.log('  "точное слово" - только точное совпадение');
+            console.log('  слово - смысловой поиск');
+            console.log('  "ИИ" обучение - точное ИИ + смысловое обучение');
+        }
+
+        const script = document.createElement('script');
+        script.src = 'https://cdn.jsdelivr.net/npm/marked/marked.min.js';
+        document.head.appendChild(script);
+
+        script.onload = init;
+        script.onerror = () => {
+            console.warn('Marked не загрузился');
+            window.marked = { parse: (text) => text };
+            init();
+        };
+
+        if (window.marked) {
+            init();
+        }
+
+        // ============================================
+        // ГОРЯЧИЕ КЛАВИШИ
+        // ============================================
+        document.addEventListener('keydown', (e) => {
+            if (e.ctrlKey && e.key === 'Enter') {
+                const modal = document.getElementById('editorModal');
+                if (!modal.classList.contains('hidden')) {
+                    e.preventDefault();
+                    saveNote();
+                }
+            }
+            if (e.key === 'Escape') {
+                const modal = document.getElementById('editorModal');
+                if (!modal.classList.contains('hidden')) {
+                    closeEditor();
+                }
+            }
+            if (e.ctrlKey && e.key === 'n') {
+                e.preventDefault();
+                createNote();
+            }
+        });
+
+        console.log('⌨️ Горячие клавиши:');
+        console.log('  Ctrl+N - Новая заметка');
+        console.log('  Ctrl+Enter - Сохранить');
+        console.log('  Escape - Закрыть редактор');
+    </script>
+
+</body>
+</html>
